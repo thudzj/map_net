@@ -16,7 +16,7 @@ from theano import tensor as T
 
 # Local layers
 from layers import ReSegLayer
-from mnist import load_dataset, iterate_minibatches
+from mnist import iterate_minibatches
 
 def getFunctions(input_var, target_var, l_map, l_pred, num_classes,
                  batch_norm=False, weight_decay=0.,
@@ -367,7 +367,16 @@ def train(params):
           )
     
     print("Loading data...")
-    X_train, y_train, X_val, y_val, X_test, y_test = load_dataset()
+    npz_file = np.load("mnist-cluttered-master/train.npz")
+    X_train = npz_file['arr_0']
+    y_train = npz_file['arr_1']
+
+    X_train, X_val = X_train[:-10000], X_train[-10000:]
+    y_train, y_val = y_train[:-10000], y_train[-10000:]
+
+    npz_file = np.load("mnist-cluttered-master/test.npz")
+    X_test = npz_file['arr_0']
+    y_test = npz_file['arr_1']
 
     print "Starting training"
     for epoch in range(params['num_epochs']):
