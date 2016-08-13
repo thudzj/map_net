@@ -40,9 +40,10 @@ class ReSegLayer(lasagne.layers.Layer):
                  out_nfilters,
                  out_filters_size,
                  out_filters_stride,
-                 out_W_init=lasagne.init.GlorotUniform(),
+                 out_W_init=[lasagne.init.GlorotUniform()],
                  out_b_init=lasagne.init.Constant(0.),
-                 out_nonlinearity=lasagne.nonlinearities.identity,
+                 out_nonlinearity=[lasagne.nonlinearities.identity],
+                 out_pad=[1],
                  # common recurrent layer params
                  RecurrentNet=lasagne.layers.GRULayer,
                  nonlinearity=lasagne.nonlinearities.rectify,
@@ -267,17 +268,17 @@ class ReSegLayer(lasagne.layers.Layer):
 
         elif out_upsampling_type == 'grad':
             l_upsampling = l_renet
-            for i, (nf, f_size, stride) in enumerate(zip(
-                    out_nfilters, out_filters_size, out_filters_stride)):
+            for i, (nf, f_size, stride, nonli, out_w, out_p) in enumerate(zip(
+                    out_nfilters, out_filters_size, out_filters_stride, out_nonlinearity, out_W_init, out_pad)):
                 l_upsampling = TransposedConv2DLayer(
                     l_upsampling,
                     num_filters=nf,
                     filter_size=f_size,
                     stride=stride,
-                    crop=0,
-                    W=out_W_init,
+                    crop=out_p,
+                    W=out_w,
                     b=out_b_init,
-                    nonlinearity=out_nonlinearity)
+                    nonlinearity=nonli,)
                 self.sublayers.append(l_upsampling)
 
                 if batch_norm:

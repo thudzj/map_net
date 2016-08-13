@@ -7,7 +7,8 @@ from lasagne.layers import get_all_layers, Conv2DLayer, Layer, Pool2DLayer
 import theano
 from theano import tensor as T
 from theano.ifelse import ifelse
-
+from theano.tensor.nnet.abstract_conv import bilinear_upsampling
+from theano.tensor.signal.pool import pool_2d
 
 class PaddedConv2DLayer(Conv2DLayer):
     def __init__(self, incoming, num_filters, filter_size, stride=(1, 1),
@@ -339,3 +340,83 @@ def get_equivalent_input_padding(layer, layers_args=[]):
         pad_factor *= stride
 
     return tot_pad
+
+class BilinearLayer(lasagne.layers.Layer):
+    """
+    BilinearLayer for upsample
+    """
+
+    def __init__(self, incoming, radio, **kwargs):
+        super(BilinearLayer, self).__init__(incoming, **kwargs)
+        self.radio = radio
+
+
+    def get_output_shape_for(self, input_shape):
+        output_shape = list(input_shape)  # copy / convert to mutable list
+        if output_shape[2] is not None:
+            output_shape[2] *= self.radio
+        if output_shape[3] is not None:
+            output_shape[3] *= self.radio
+        return tuple(output_shape)
+
+    def get_output_for(self, input, **kwargs):
+        upscaled = bilinear_upsampling(input=input, ratio=self.radio)
+        #upscaled = input * 2
+        return upscaled
+
+class SmoothLayer(lasagne.layers.Layer):
+    """
+    SmoothLayer for map
+    """
+
+    def __init__(self, incoming, **kwargs):
+        super(SmoothLayer, self).__init__(incoming, **kwargs)
+
+    def get_output_shape_for(self, input_shape):
+        return (1)
+
+    def get_output_for(self, input, **kwargs):
+        pooled = pool_2d(input,
+                         ds=(3,3),
+                         st=(1,1),
+                         ignore_border=True,
+                         padding=(1,1),
+                         mode='max',
+                         )
+        return T.mean((pooled-input)**2)
+
+
+class MultiScaleConvLayer(lasagne.layers.Layer):
+    """
+    MultiScaleConvLayer for map
+    """
+
+    def __init__(self, incoming, num_filters, filter_sizes, W=init.GlorotUniform(), b=init.Constant(0.),nonlinearity=nonlinearities.rectify, flip_filters=True,**kwargs):
+        super(MultiScaleConvLayer, self).__init__(incoming, **kwargs)
+        if nonlinearity is None:
+            self.nonlinearity = nonlinearities.identity
+        else:
+            self.nonlinearity = nonlinearity
+        self.W = []
+        self.b = []
+        self.num_filters = num_filters
+        self.filter_sizes = filter_sizes
+        for i, filter_size in enumerate(filter_sizes):
+            tW = self.add_param(W, (num_filters, self.input_shape[1]) + filter_size,  name="W_" + str(i))
+            tb = self.add_param(b, (num_filters,), name="b_"+str(i),regularizable=False)
+            self.W.append(tW)
+            self.b.append(tb)
+        
+
+    def get_output_shape_for(self, input_shape):
+        return (input_shape[0], self.num_filters* len(self.filter_sizes), input_shape[2], input_shape[3])
+
+    def get_output_for(self, input, **kwargs):
+        act = None
+        for W,b,filter_size in zip(self.W,self.b, self.filter_sizes):
+            if act == None:
+                act = self.nonlinearity(T.nnet.conv2d(input, W, self.input_shape, (self.num_filters, self.input_shape[1]) + filter_size, subsample=(1,1),border_mode='half',filter_flip=True)+b.dimshuffle(('x', 0, 'x', 'x')))
+            else:
+                act = T.concatenate([act, self.nonlinearity(T.nnet.conv2d(input, W, self.input_shape, (self.num_filters, self.input_shape[1]) + filter_size, subsample=(1,1), border_mode='half',filter_flip=True)+b.dimshuffle(('x', 0, 'x', 'x')))], axis=1)
+        return act
+

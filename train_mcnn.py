@@ -17,7 +17,7 @@ from theano import tensor as T
 # Local layers
 from layers import ReSegLayer
 from mnist import iterate_minibatches
-from padded import BilinearLayer, SmoothLayer
+from padded import BilinearLayer, SmoothLayer, MultiScaleConvLayer
 
 from scipy.misc import imsave
 from theano.tensor.nnet.abstract_conv import bilinear_kernel_2D
@@ -232,54 +232,31 @@ def build(input_s, num_classes, dim_proj=[32, 32],
 
     # Convert to bc01 (batchsize, ch, rows, cols)
     #l_in = lasagne.layers.DimshuffleLayer(l_in, (0, 3, 1, 2))
+    # l_conv_1 = lasagne.layers.Conv2DLayer(
+    #         l_in, num_filters=12, filter_size=(3, 3),stride=(1, 1),pad='same',
+    #         nonlinearity=lasagne.nonlinearities.rectify,
+    #         W=lasagne.init.GlorotUniform())
+    # l_conv_2 = lasagne.layers.Conv2DLayer(
+    #         l_in, num_filters=12, filter_size=(7, 7),stride=(1, 1),pad='same',
+    #         nonlinearity=lasagne.nonlinearities.rectify,
+    #         W=lasagne.init.GlorotUniform())
+    # l_conv_3 = lasagne.layers.Conv2DLayer(
+    #         l_in, num_filters=12, filter_size=(11, 11),stride=(1, 1),pad='same',
+    #         nonlinearity=lasagne.nonlinearities.rectify,
+    #         W=lasagne.init.GlorotUniform())
 
-    # To know the upsampling ratio we compute what is the feature map
-    # size at the end of the downsampling pathway for an hypotetical
-    # initial size of 100 (we just need the ratio, so we don't care
-    # about the actual size)
+    # l_multiconv_1 = MultiScaleConvLayer(l_conv_1, num_filters=12, filter_sizes=[(3,3), (7,7), (11,11)])
+    # l_multiconv_2 = MultiScaleConvLayer(l_conv_2, num_filters=12, filter_sizes=[(3,3), (7,7), (11,11)])
+    # l_multiconv_3 = MultiScaleConvLayer(l_conv_3, num_filters=12, filter_sizes=[(3,3), (7,7), (11,11)])
+    # l_concat = lasagne.layers.ConcatLayer([l_multiconv_1,l_multiconv_2,l_multiconv_3])
 
-    l_map = ReSegLayer(l_in, n_layers, pheight, pwidth, dim_proj,
-                         stack_sublayers,
-                         # upsampling
-                         out_upsampling,
-                         out_nfilters,
-                         out_filters_size,
-                         out_filters_stride,
-                         out_W_init=out_W_init,
-                         out_b_init=out_b_init,
-                         out_nonlinearity=out_nonlinearity,
-                         out_pad=out_pad,
-                         # common recurrent layer params
-                         RecurrentNet=RecurrentNet,
-                         nonlinearity=nonlinearity,
-                         hid_init=hid_init,
-                         grad_clipping=grad_clipping,
-                         precompute_input=precompute_input,
-                         mask_input=mask_input,
-                         # 1x1 Conv layer for dimensional reduction
-                         conv_dim_red=conv_dim_red,
-                         conv_dim_red_nonlinearity=conv_dim_red_nonlinearity,
-                         # GRU specific params
-                         gru_resetgate=gru_resetgate,
-                         gru_updategate=gru_updategate,
-                         gru_hidden_update=gru_hidden_update,
-                         gru_hid_init=gru_hid_init,
-                         # LSTM specific params
-                         lstm_ingate=lstm_ingate,
-                         lstm_forgetgate=lstm_forgetgate,
-                         lstm_cell=lstm_cell,
-                         lstm_outgate=lstm_outgate,
-                         # RNN specific params
-                         rnn_W_in_to_hid=rnn_W_in_to_hid,
-                         rnn_W_hid_to_hid=rnn_W_hid_to_hid,
-                         rnn_b=rnn_b,
-                         # Special layers
-                         batch_norm=batch_norm,
-                         name='reseg')
+    l_multiconv_1 = MultiScaleConvLayer(l_in, num_filters=12, filter_sizes=[(3,3), (7,7), (11,11)])
+    l_multiconv_2 = MultiScaleConvLayer(l_multiconv_1, num_filters=12, filter_sizes=[(3,3), (7,7), (11,11)])
+    l_map = lasagne.layers.Conv2DLayer(l_multiconv_2,num_filters=11,filter_size=(3, 3),stride=(1, 1),pad='same',nonlinearity=lasagne.nonlinearities.rectify)
+    l_map = lasagne.layers.Conv2DLayer(l_map,num_filters=1,filter_size=(3, 3),stride=(1, 1),pad='same',nonlinearity=lasagne.nonlinearities.sigmoid)
 
     # l_map = BilinearLayer(l_map, 2)
-
-    # # channel = nclasses
+    # # channel = nclassesdd_in
     # l_map = lasagne.layers.Conv2DLayer(
     #     l_map,
     #     num_filters=1,
@@ -539,13 +516,13 @@ if __name__ == '__main__':
         'beta1': None,
         'beta2': None,
         'epsilon': None,
-        'weight-decay': 1e-3,  # l2 reg
+        'weight-decay': 1e-4,  # l2 reg
 
-        'batch-size': 100,
-        'valid-batch-size': 200,
+        'batch-size': 250,
+        'valid-batch-size': 500,
         'shuffle': True,
         'valid-frequence': 1,
         'smooth': 0,
-        'pre': "samples3/"
+        'pre': "samples4/"
         }
     )
